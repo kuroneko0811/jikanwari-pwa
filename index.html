@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>円グラフ時間割</title>
+<meta name="description" content="曜日・祝日・特定の日の予定を24時間の円グラフで組み立てるスケジュールアプリ">
+<meta name="theme-color" content="#EEF1F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131820" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="円グラフ時間割">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+@media (max-width:820px){input,select,textarea{font-size:16px!important}}
+
+/* Layout: 上で「曜日の基本／カレンダー／プリセット」を切替。その下に対象の選択欄、左に24時間円グラフ、右に予定リストと編集フォーム。 */
+:root{
+  --bg:#EEF1F4; --panel:#FFFFFF; --ink:#1E2633; --muted:#667085; --line:#D5DBE3;
+  --accent:#2F6F8F; --accent-ink:#FFFFFF; --accent-soft:#DCEAF1; --free:#E3E8EE; --warn:#B4442E;
+  --sun:#C2493A; --sat:#3E6FB8; --seg-ink:#1E2633;
+  --f-display:"Zen Maru Gothic","Hiragino Maru Gothic ProN",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#131820; --panel:#1C232E; --ink:#E6EBF2; --muted:#98A3B3; --line:#2E3846;
+  --accent:#6FB3D2; --accent-ink:#0E1620; --accent-soft:#1E3442; --free:#262F3B; --warn:#F08A72;
+  --sun:#F08A72; --sat:#86AEEB; --seg-ink:#1E2633; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131820; --panel:#1C232E; --ink:#E6EBF2; --muted:#98A3B3; --line:#2E3846;
+  --accent:#6FB3D2; --accent-ink:#0E1620; --accent-soft:#1E3442; --free:#262F3B; --warn:#F08A72;
+  --sun:#F08A72; --sat:#86AEEB; --seg-ink:#1E2633; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+h1{font-family:var(--f-display);font-size:1.6rem;margin:0;letter-spacing:.02em;text-wrap:balance}
+h2{font-family:var(--f-display);font-size:1.05rem;margin:0}
+h3{font-size:.85rem;margin:0;color:var(--muted);font-weight:500}
+.sub{color:var(--muted);font-size:.85rem;margin:0}
+button{font:inherit}
+[hidden]{display:none!important}
+button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.modes{display:grid;grid-template-columns:repeat(3,1fr);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.mode{border:0;background:none;color:var(--muted);font-weight:700;border-radius:9px;padding:9px 4px;cursor:pointer;font-size:.92rem}
+.mode[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+
+.tabs{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.tab{font-weight:700;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px 0;cursor:pointer}
+.tab.sat{color:var(--sat)}.tab.sun,.tab.holiday{color:var(--sun)}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;min-width:0}
+.main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.main{grid-template-columns:1fr}}
+.clock svg{width:100%;height:auto;display:block;max-width:540px;margin:0 auto}
+.stats{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-top:8px;font-size:.85rem;color:var(--muted)}
+.stats b{font-family:var(--f-mono);color:var(--ink);font-weight:500}
+.warnline{color:var(--warn);font-size:.85rem;text-align:center;margin:6px 0 0}
+.seg{cursor:pointer}.seg:hover{opacity:.85}
+
+.editor{display:grid;gap:14px}
+.ctx{background:var(--accent-soft);border-radius:10px;padding:10px 12px;display:grid;gap:8px;font-size:.88rem}
+.ctx p{margin:0}
+.badge{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--panel);color:var(--accent);border:1px solid var(--accent);vertical-align:1px;margin-right:6px}
+.badge.hol{color:var(--sun);border-color:var(--sun)}
+.list{list-style:none;margin:0;padding:0;display:grid;gap:3px;max-height:300px;overflow:auto}
+.item{display:grid;grid-template-columns:12px 96px 1fr;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.item:hover{background:var(--free)}.item.sel{border-color:var(--accent)}
+.dot{width:12px;height:12px;border-radius:3px}
+.time{font-family:var(--f-mono);font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.empty{color:var(--muted);font-size:.9rem;padding:8px}
+form{margin:0}
+.box{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+label{display:grid;gap:3px;font-size:.78rem;color:var(--muted);flex:1;min-width:110px}
+input[type=text],input[type=time],select,textarea{font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;box-sizing:border-box}
+input[type=time]{font-family:var(--f-mono)}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.sw{width:26px;height:26px;border-radius:7px;border:2px solid transparent;cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{border-color:var(--ink)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font-size:.88rem;font-weight:500;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--warn)}
+.btn.armed{background:var(--warn);border-color:var(--warn);color:var(--panel)}
+.daychecks{display:flex;gap:6px;flex-wrap:wrap}
+.daychecks label{display:flex;align-items:center;gap:4px;flex:none;min-width:0;font-size:.9rem;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:3px 9px;cursor:pointer}
+.note{font-size:.8rem;color:var(--muted);margin:0}
+.toast{min-height:1.2em;font-size:.82rem;color:var(--accent)}
+
+/* calendar */
+.calhead{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.calhead h2{min-width:8.5em;text-align:center;font-variant-numeric:tabular-nums}
+.navb{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:1.1rem}
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dow{text-align:center;font-size:.75rem;font-weight:700;color:var(--muted);padding:2px 0}
+.dow.sat{color:var(--sat)}.dow.sun{color:var(--sun)}
+.cell{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;padding:4px 4px 6px;cursor:pointer;display:grid;grid-template-rows:auto auto 1fr auto;justify-items:center;gap:1px;min-height:96px;min-width:0;text-align:center}
+.cell:hover{background:var(--free)}
+.cell.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.cn{font-family:var(--f-mono);font-size:.85rem;font-weight:500;justify-self:start;padding-left:2px}
+.cell.today .cn{background:var(--accent);color:var(--accent-ink);border-radius:99px;padding:0 6px}
+.cell.sat .cn{color:var(--sat)}.cell.sun .cn,.cell.hol .cn{color:var(--sun)}
+.cell.today.sat .cn,.cell.today.sun .cn,.cell.today.hol .cn{color:var(--accent-ink)}
+.ch{font-size:.62rem;color:var(--sun);line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:.8em}
+.cell svg{width:44px;height:44px;align-self:center}
+.chip{font-size:.62rem;line-height:1.3;padding:0 5px;border-radius:99px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--accent-soft);color:var(--accent);font-weight:700}
+.chip.none{background:none}
+.blank{min-height:96px}
+.calfoot{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-top:12px}
+.check{display:flex;align-items:center;gap:6px;flex:none;min-width:0;font-size:.88rem;color:var(--ink);cursor:pointer}
+@media (max-width:560px){
+  .cell,.blank{min-height:70px;padding:3px 2px 4px}.ch{display:none}.cell svg{width:30px;height:30px}
+  .chip{font-size:0;width:7px;height:7px;padding:0}.chip.none{width:0}
+}
+
+/* presets */
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.pchip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:5px 12px 5px 6px;cursor:pointer;font-weight:500}
+.pchip svg{width:30px;height:30px}
+.pchip[aria-selected="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+#selPreset{display:grid;gap:14px}
+
+.week{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;margin-top:10px}
+@media (max-width:620px){.week{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.mini{background:none;border:1px solid transparent;border-radius:10px;padding:6px;cursor:pointer;color:var(--ink);display:grid;gap:2px;justify-items:center}
+.mini:hover{background:var(--free)}.mini.cur{border-color:var(--accent)}
+.mini svg{width:100%;max-width:100px;height:auto}
+.mini span{font-weight:700;font-size:.9rem}
+.mini.holiday span,.mini.sun span{color:var(--sun)}.mini.sat span{color:var(--sat)}
+.olist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:4px}
+.orow{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer;border:0;background:none;color:var(--ink);text-align:left;width:100%}
+.orow:hover{background:var(--free)}
+.orow.past{opacity:.55}
+.orow .time{min-width:7.5em}
+details summary{cursor:pointer;color:var(--muted);font-size:.85rem}
+.memo{display:grid;gap:4px}
+.memo textarea{min-height:96px;resize:vertical;line-height:1.6;font-size:.92rem}
+.memoview{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:grid;gap:4px}
+.memohead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.memohead .btn{padding:3px 10px;font-size:.8rem}
+.memotext{margin:0;white-space:pre-wrap;font-size:.9rem;overflow-wrap:anywhere}
+.mlist{display:grid;gap:4px;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.mrow{display:grid;grid-template-columns:2em 1fr;gap:10px;text-align:left;border:0;background:none;color:var(--ink);padding:6px 8px;border-radius:8px;cursor:pointer;align-items:start}
+.mrow:hover{background:var(--free)}
+.mday{font-weight:700}
+.mrow.sat .mday{color:var(--sat)}.mrow.sun .mday,.mrow.holiday .mday{color:var(--sun)}
+.mtext{white-space:pre-wrap;font-size:.88rem;overflow-wrap:anywhere;min-width:0}
+details textarea{min-height:90px;font-family:var(--f-mono);font-size:.75rem;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>曜日別 円グラフ時間割</h1>
+    <p class="sub">0時を真上に、時計回りで24時間。円の色付き部分をタップすると編集できます。</p>
+  </header>
+
+  <div class="modes" role="tablist" id="modes">
+    <button class="mode" role="tab" data-m="week">曜日の基本</button>
+    <button class="mode" role="tab" data-m="date">カレンダー</button>
+    <button class="mode" role="tab" data-m="preset">プリセット</button>
+  </div>
+
+  <div class="tabs" role="tablist" id="selWeek"></div>
+
+  <section class="panel" id="selCal" hidden>
+    <div class="calhead">
+      <button class="navb" id="prevM" aria-label="前の月">‹</button>
+      <h2 id="calTitle"></h2>
+      <button class="navb" id="nextM" aria-label="次の月">›</button>
+      <button class="btn" id="todayBtn">今日</button>
+    </div>
+    <div class="calgrid" id="calGrid"></div>
+    <div class="calfoot">
+      <label class="check" for="useHol"><input type="checkbox" id="useHol">祝日には「祝日」の予定を使う</label>
+      <span class="note">祝日・振替休日は自動で判定します（2022年以降の祝日法にもとづく）。下の帯は、その日だけの設定やプリセットの名前です。</span>
+    </div>
+  </section>
+
+  <section class="panel" id="selPreset" hidden>
+    <div class="chips" id="presetChips" role="tablist"></div>
+    <form id="newPreset" class="row box">
+      <label for="npName">新しいプリセットの名前<input type="text" id="npName" maxlength="20" placeholder="例：在宅勤務、テスト期間" required></label>
+      <label for="npFrom">最初の中身<select id="npFrom"></select></label>
+      <button class="btn primary" type="submit">作成</button>
+    </form>
+  </section>
+
+  <div class="main" id="main">
+    <section class="panel clock">
+      <svg id="clock" viewBox="0 0 400 400" role="img" aria-label="24時間円グラフ"></svg>
+      <div class="stats" id="stats"></div>
+      <p class="warnline" id="warn" hidden></p>
+    </section>
+
+    <section class="panel editor">
+      <h2 id="edTitle">予定</h2>
+      <div class="ctx" id="ctx" hidden></div>
+      <div class="memo" id="memoBox">
+        <div id="memoEdit" class="memo">
+          <label for="memo"><span id="memoLabel">メモ</span><textarea id="memo" rows="4" maxlength="2000" placeholder="例：・燃えるゴミの日&#10;・ジムに行く"></textarea></label>
+          <span class="note" id="memoSaved" aria-live="polite"></span>
+        </div>
+        <div id="memoView" class="memoview" hidden></div>
+      </div>
+      <ul class="list" id="list"></ul>
+
+      <form id="form" class="box">
+        <label for="fTitle">予定名<input type="text" id="fTitle" maxlength="20" placeholder="例：勉強" required></label>
+        <div class="row">
+          <label for="fStart">開始<input type="time" id="fStart" step="300" value="09:00" required></label>
+          <label for="fEnd">終了<input type="time" id="fEnd" step="300" value="10:00" required></label>
+        </div>
+        <div class="swatches" id="swatches" aria-label="色"></div>
+        <div class="btns">
+          <button class="btn primary" type="submit" id="saveBtn">追加</button>
+          <button class="btn" type="button" id="newBtn" hidden>新規入力に戻る</button>
+          <button class="btn danger" type="button" id="delBtn" hidden>削除</button>
+        </div>
+        <div class="toast" id="toast" aria-live="polite"></div>
+      </form>
+
+      <div class="box" id="copyBox">
+        <h3>この予定を他の曜日にコピー（上書き）</h3>
+        <div class="daychecks" id="copyDays"></div>
+        <div class="btns"><button class="btn" type="button" id="copyBtn">選んだ曜日にコピー</button></div>
+      </div>
+
+      <form class="box" id="asPreset">
+        <h3>この予定をプリセットとして保存</h3>
+        <div class="row">
+          <label for="apName">プリセット名<input type="text" id="apName" maxlength="20" placeholder="例：在宅勤務" required></label>
+          <button class="btn" type="submit">保存</button>
+        </div>
+      </form>
+
+      <div class="box">
+        <div class="btns"><button class="btn danger" type="button" id="clearBtn">予定をすべて消す</button></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel" id="bottom"></section>
+
+  <details class="panel">
+    <summary>データのバックアップ・読み込み</summary>
+    <p class="note" style="margin-top:8px">予定はこのブラウザに保存されます。別の端末に移すときは、下のテキストをコピーして貼り付けてください。</p>
+    <textarea id="io" aria-label="JSONデータ"></textarea>
+    <div class="btns" style="margin-top:8px">
+      <button class="btn" type="button" id="copyJson">テキストをコピー</button>
+      <button class="btn" type="button" id="loadJson">貼り付けた内容を読み込む</button>
+    </div>
+    <div class="toast" id="ioToast"></div>
+  </details>
+</div>
+
+<script>
+const WK=[["mon","月"],["tue","火"],["wed","水"],["thu","木"],["fri","金"],["sat","土"],["sun","日"],["holiday","祝"]];
+const WKNAME={mon:"月曜",tue:"火曜",wed:"水曜",thu:"木曜",fri:"金曜",sat:"土曜",sun:"日曜",holiday:"祝日"};
+const JSDAY=["sun","mon","tue","wed","thu","fri","sat"];
+const COLORS=["#8FB8DE","#A8D5BA","#F3C98B","#F2A7A0","#C7B3E5","#9ED9D4","#E6D88F","#C9CED6"];
+const KEY2="weekclock-v2",KEY1="weekclock-v1",TRE=/^\d\d:\d\d$/;
+let uid=1;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const newPid=()=>"p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+/* ---------- 日付と祝日 ---------- */
+const pad=n=>String(n).padStart(2,"0");
+const dkey=(y,m,d)=>`${y}-${pad(m)}-${pad(d)}`;
+const parseKey=k=>{const[y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d)};
+const keyOf=dt=>dkey(dt.getFullYear(),dt.getMonth()+1,dt.getDate());
+const weekdayKey=k=>JSDAY[parseKey(k).getDay()];
+const holCache={};
+function nthMon(y,mo,n){const w=new Date(y,mo-1,1).getDay();return 1+((8-w)%7)+7*(n-1)}
+function holidays(y){
+  if(holCache[y])return holCache[y];
+  const m=new Map(),add=(mo,d,n)=>m.set(dkey(y,mo,d),n),b=y-1980,lp=Math.floor(b/4);
+  add(1,1,"元日");add(1,nthMon(y,1,2),"成人の日");add(2,11,"建国記念の日");
+  if(y>=2020)add(2,23,"天皇誕生日");
+  add(3,Math.floor(20.8431+0.242194*b-lp),"春分の日");
+  add(4,29,"昭和の日");add(5,3,"憲法記念日");add(5,4,"みどりの日");add(5,5,"こどもの日");
+  add(7,nthMon(y,7,3),"海の日");add(8,11,"山の日");add(9,nthMon(y,9,3),"敬老の日");
+  add(9,Math.floor(23.2488+0.242194*b-lp),"秋分の日");add(10,nthMon(y,10,2),"スポーツの日");
+  add(11,3,"文化の日");add(11,23,"勤労感謝の日");
+  const base=new Map(m);
+  // 国民の休日：祝日にはさまれた平日
+  for(let dt=new Date(y,0,2);dt.getFullYear()===y;dt.setDate(dt.getDate()+1)){
+    const k=keyOf(dt);if(base.has(k)||dt.getDay()===0)continue;
+    const p=new Date(dt);p.setDate(p.getDate()-1);const n=new Date(dt);n.setDate(n.getDate()+1);
+    if(base.has(keyOf(p))&&base.has(keyOf(n)))m.set(k,"国民の休日");
+  }
+  // 振替休日：日曜の祝日のあと、最初の祝日でない日
+  [...base.keys()].sort().forEach(k=>{
+    const dt=parseKey(k);if(dt.getDay()!==0)return;
+    do{dt.setDate(dt.getDate()+1)}while(m.has(keyOf(dt)));
+    m.set(keyOf(dt),"振替休日");
+  });
+  return holCache[y]=m;
+}
+const holidayName=k=>holidays(+k.slice(0,4)).get(k)||"";
+
+/* ---------- データ ---------- */
+const it=(t,s,e,c)=>({title:t,start:s,end:e,color:COLORS[c]});
+function sample(){
+  const wk=()=>[it("睡眠","23:30","06:30",4),it("朝の支度","06:30","07:30",2),it("通勤","07:30","08:30",7),it("仕事","08:30","12:00",0),it("昼食","12:00","13:00",2),it("仕事","13:00","17:30",0),it("通勤","17:30","18:30",7),it("夕食","18:30","19:30",2),it("自由時間","19:30","22:30",1),it("お風呂","22:30","23:30",5)];
+  const we=()=>[it("睡眠","00:00","08:00",4),it("朝食","08:00","09:00",2),it("家事","09:00","11:00",6),it("外出","11:00","17:00",3),it("夕食","18:00","19:00",2),it("趣味","19:00","22:30",1),it("お風呂","22:30","23:30",5)];
+  const hol=()=>[it("睡眠","00:00","08:30",4),it("朝食","08:30","09:30",2),it("ゆっくり過ごす","09:30","12:00",1),it("昼食","12:00","13:00",2),it("お出かけ","13:00","18:00",3),it("夕食","18:30","19:30",2),it("自由時間","19:30","23:00",1),it("お風呂","23:00","23:59",5)];
+  return {
+    week:{mon:wk(),tue:wk(),wed:wk(),thu:wk(),fri:wk(),sat:we(),sun:we(),holiday:hol()},
+    presets:[
+      {id:"p1",name:"在宅勤務",items:[it("睡眠","23:30","07:00",4),it("朝の支度","07:00","08:00",2),it("仕事","08:30","12:00",0),it("昼食","12:00","13:00",2),it("仕事","13:00","17:30",0),it("運動","17:30","18:30",3),it("夕食","18:30","19:30",2),it("自由時間","19:30","22:30",1),it("お風呂","22:30","23:30",5)]},
+      {id:"p2",name:"旅行・遠出",items:[it("睡眠","00:00","06:00",4),it("準備","06:00","07:00",2),it("移動","07:00","09:00",7),it("観光","09:00","12:00",3),it("昼食","12:00","13:00",2),it("観光","13:00","17:00",3),it("移動","17:00","19:00",7),it("夕食","19:00","20:00",2),it("自由時間","20:00","23:00",1)]}
+    ],
+    dates:{
+      "2026-11-13":{preset:"p1"},
+      "2026-11-18":{items:[it("睡眠","23:30","06:30",4),it("朝の支度","06:30","07:30",2),it("移動","07:30","08:30",7),it("健康診断","08:30","11:00",3),it("仕事","11:00","12:00",0),it("昼食","12:00","13:00",2),it("仕事","13:00","17:30",0),it("通勤","17:30","18:30",7),it("夕食","18:30","19:30",2),it("自由時間","19:30","22:30",1),it("お風呂","22:30","23:30",5)]},
+      "2026-11-22":{preset:"p2"}
+    },
+    memos:{mon:"・燃えるゴミの日\n・今週の目標を決める",wed:"・プラスチックごみの日\n・仕事帰りにジム",fri:"・週報を提出\n・冷蔵庫の中を整理",sat:"・洗濯と掃除\n・食材の買い出し",sun:"・来週の予定を確認\n・作り置き"},
+    useHoliday:true
+  };
+}
+const okColor=c=>typeof c==="string"&&/^#[0-9a-fA-F]{6}$/.test(c);
+function cleanItems(a){return (Array.isArray(a)?a:[]).filter(x=>x&&x.title&&TRE.test(x.start)&&TRE.test(x.end)).map(x=>({id:uid++,title:String(x.title).slice(0,20),start:x.start,end:x.end,color:okColor(x.color)?x.color:COLORS[0]}))}
+function normalize(d){
+  const s={week:{},presets:[],dates:{},useHoliday:d.useHoliday!==false};
+  s.memos={};
+  WK.forEach(([k])=>{s.week[k]=cleanItems(d.week&&d.week[k]);const m=d.memos&&d.memos[k];if(typeof m==="string"&&m)s.memos[k]=m.slice(0,2000)});
+  (Array.isArray(d.presets)?d.presets:[]).forEach(p=>{if(p&&p.name)s.presets.push({id:String(p.id||newPid()),name:String(p.name).slice(0,20),items:cleanItems(p.items)})});
+  Object.entries(d.dates||{}).forEach(([k,v])=>{
+    if(!/^\d{4}-\d\d-\d\d$/.test(k)||!v)return;
+    if(v.preset&&s.presets.some(p=>p.id===v.preset))s.dates[k]={preset:v.preset};
+    else if(Array.isArray(v.items))s.dates[k]={items:cleanItems(v.items)};
+  });
+  return s;
+}
+let state;
+try{const v2=JSON.parse(localStorage.getItem(KEY2));if(v2&&v2.week)state=normalize(v2)}catch(e){}
+if(!state){
+  let v1=null;try{v1=JSON.parse(localStorage.getItem(KEY1))}catch(e){}
+  const s=sample();
+  if(v1&&typeof v1==="object"&&v1.mon){WK.forEach(([k])=>{if(Array.isArray(v1[k]))s.week[k]=v1[k]});if(Array.isArray(v1.sun))s.week.holiday=v1.sun;s.dates={};s.memos={}}
+  state=normalize(s);
+}
+const stripItems=a=>a.map(({title,start,end,color})=>({title,start,end,color}));
+function exportData(){
+  const o={week:{},presets:state.presets.map(p=>({id:p.id,name:p.name,items:stripItems(p.items)})),dates:{},useHoliday:state.useHoliday};
+  o.memos={...state.memos};
+  WK.forEach(([k])=>o.week[k]=stripItems(state.week[k]));
+  Object.entries(state.dates).forEach(([k,v])=>o.dates[k]=v.preset?{preset:v.preset}:{items:stripItems(v.items)});
+  return o;
+}
+function save(){const j=JSON.stringify(exportData());try{localStorage.setItem(KEY2,j)}catch(e){} $("io").value=j}
+const clone=a=>a.map(x=>({...x,id:uid++}));
+const findPreset=id=>state.presets.find(p=>p.id===id);
+
+/* ---------- 画面の状態 ---------- */
+const now=new Date(),todayKey=keyOf(now);
+const ui={mode:"week",wk:JSDAY[now.getDay()],date:todayKey,calY:now.getFullYear(),calM:now.getMonth()+1,preset:state.presets[0]?.id||null,editing:null,color:COLORS[0]};
+if(holidayName(todayKey)&&state.useHoliday)ui.wk="holiday";
+
+function resolveDate(k){
+  const o=state.dates[k],h=holidayName(k);
+  if(o&&o.preset){const p=findPreset(o.preset);if(p)return{items:p.items,src:"preset",label:p.name,hname:h}}
+  if(o&&o.items)return{items:o.items,src:"custom",label:"この日だけ",hname:h};
+  if(h&&state.useHoliday)return{items:state.week.holiday,src:"holiday",label:"祝日",hname:h};
+  return{items:state.week[weekdayKey(k)],src:"week",label:WKNAME[weekdayKey(k)],hname:h};
+}
+function getItems(){
+  if(ui.mode==="week")return state.week[ui.wk];
+  if(ui.mode==="date")return resolveDate(ui.date).items;
+  const p=findPreset(ui.preset);return p?p.items:[];
+}
+// 予定を変更するときは必ずここを通す。日付で基本・プリセットを表示中なら、その日だけの予定に切り替えてから変更する。
+function mutate(fn){
+  let arr;
+  if(ui.mode==="date"){
+    const o=state.dates[ui.date];
+    if(!o||!o.items)state.dates[ui.date]={items:resolveDate(ui.date).items.map(x=>({...x}))};
+    arr=state.dates[ui.date].items;
+  }else arr=getItems();
+  fn(arr);save();
+}
+
+/* ---------- 円グラフ ---------- */
+const toMin=t=>{const[h,m]=t.split(":").map(Number);return h*60+m};
+const dur=(s,e)=>{const d=(toMin(e)-toMin(s)+1440)%1440;return d===0?1440:d};
+const fmt=m=>`${Math.floor(m/60)}時間${m%60?(m%60)+"分":""}`;
+const sortItems=a=>[...a].sort((x,y)=>toMin(x.start)-toMin(y.start));
+function pt(cx,cy,r,min){const a=min/1440*Math.PI*2-Math.PI/2;return[cx+r*Math.cos(a),cy+r*Math.sin(a)]}
+function arc(cx,cy,R,r,s,d){
+  if(d>=1440)d=1439.99;
+  const e=s+d,lg=d>720?1:0;
+  const[a,b]=pt(cx,cy,R,s),[c,dd]=pt(cx,cy,R,e),[f,g]=pt(cx,cy,r,e),[h,i]=pt(cx,cy,r,s);
+  return `M${a} ${b}A${R} ${R} 0 ${lg} 1 ${c} ${dd}L${f} ${g}A${r} ${r} 0 ${lg} 0 ${h} ${i}Z`;
+}
+function ring(items){
+  let p=`<circle cx="50" cy="50" r="35" fill="none" stroke="var(--free)" stroke-width="30"/>`;
+  items.forEach(x=>p+=`<path d="${arc(50,50,50,20,toMin(x.start),dur(x.start,x.end))}" fill="${x.color}" stroke="var(--panel)" stroke-width="1.5"/>`);
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">${p}</svg>`;
+}
+function coverage(items){const occ=new Uint8Array(1440);items.forEach(x=>{const s=toMin(x.start),d=dur(x.start,x.end);for(let k=0;k<d;k++)occ[(s+k)%1440]++});return occ}
+
+function centerLabel(){
+  if(ui.mode==="week")return{big:WK.find(w=>w[0]===ui.wk)[1],small:ui.wk==="holiday"?"祝日の基本":"曜日の基本",size:32};
+  if(ui.mode==="date"){const dt=parseKey(ui.date),h=holidayName(ui.date);return{big:`${dt.getMonth()+1}/${dt.getDate()}`,small:`${WKNAME[weekdayKey(ui.date)].slice(0,1)}曜日${h?"・"+h:""}`,size:28}}
+  const p=findPreset(ui.preset),n=p?p.name:"";return{big:n,small:"プリセット",size:n.length>6?16:n.length>4?20:24};
+}
+function drawClock(){
+  const items=getItems(),cx=200,cy=200,R=160,r=62,svg=$("clock");
+  let h=`<circle cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="var(--free)" stroke-width="${R-r}"/>`;
+  items.forEach(x=>{h+=`<path class="seg" data-id="${x.id}" d="${arc(cx,cy,R,r,toMin(x.start),dur(x.start,x.end))}" fill="${x.color}" stroke="var(--panel)" stroke-width="1.5"><title>${esc(x.title)} ${x.start}–${x.end}</title></path>`});
+  const ed=items.find(i=>i.id===ui.editing);
+  if(ed)h+=`<path d="${arc(cx,cy,R+4,r-4,toMin(ed.start),dur(ed.start,ed.end))}" fill="none" stroke="var(--ink)" stroke-width="2" pointer-events="none"/>`;
+  items.forEach(x=>{
+    const s=toMin(x.start),d=dur(x.start,x.end);if(d<40)return;
+    const[tx,ty]=pt(cx,cy,(R+r)/2+6,s+d/2);
+    h+=`<text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-size="${d>=90?12:10}" font-weight="700" fill="var(--seg-ink)" pointer-events="none" font-family="var(--f-body)">${esc(x.title.slice(0,d>=120?8:4))}</text>`;
+  });
+  for(let hr=0;hr<24;hr++){
+    const m=hr*60,[x1,y1]=pt(cx,cy,R+2,m),[x2,y2]=pt(cx,cy,R+(hr%3?6:10),m);
+    h+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--muted)" stroke-width="${hr%3?1:1.6}"/>`;
+    if(hr%3===0){const[lx,ly]=pt(cx,cy,R+22,m);h+=`<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="var(--muted)" font-family="var(--f-mono)">${hr}</text>`}
+  }
+  const c=centerLabel();
+  h+=`<text x="${cx}" y="${cy-8}" text-anchor="middle" font-size="${c.size}" font-weight="700" fill="var(--ink)" font-family="var(--f-display)">${esc(c.big)}</text>`;
+  h+=`<text x="${cx}" y="${cy+20}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--f-body)">${esc(c.small)}</text>`;
+  svg.innerHTML=h;
+  svg.querySelectorAll(".seg").forEach(p=>p.addEventListener("click",()=>startEdit(+p.dataset.id)));
+  const occ=coverage(items);let used=0,over=0;occ.forEach(v=>{if(v)used++;if(v>1)over++});
+  $("stats").innerHTML=`<span>予定 <b>${fmt(used)}</b></span><span>空き時間 <b>${fmt(1440-used)}</b></span><span>件数 <b>${items.length}</b></span>`;
+  $("warn").hidden=!over;$("warn").textContent=over?`重なっている時間が ${fmt(over)} あります。リストで時刻を確認してください。`:"";
+}
+
+/* ---------- 選択欄 ---------- */
+function drawModes(){
+  document.querySelectorAll(".mode").forEach(b=>b.setAttribute("aria-selected",b.dataset.m===ui.mode));
+  $("selWeek").hidden=ui.mode!=="week";$("selCal").hidden=ui.mode!=="date";$("selPreset").hidden=ui.mode!=="preset";
+  $("main").hidden=ui.mode==="preset"&&!findPreset(ui.preset);
+}
+function drawWeekTabs(){
+  $("selWeek").innerHTML=WK.map(([k,l])=>`<button class="tab ${k}" role="tab" aria-selected="${k===ui.wk}" data-k="${k}">${l}</button>`).join("");
+  $("selWeek").querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{ui.wk=t.dataset.k;resetForm();render()}));
+}
+function drawCalendar(){
+  const y=ui.calY,m=ui.calM,first=new Date(y,m-1,1),off=(first.getDay()+6)%7,days=new Date(y,m,0).getDate();
+  $("calTitle").textContent=`${y}年${m}月`;
+  let h=["月","火","水","木","金","土","日"].map((d,i)=>`<div class="dow ${i===5?"sat":i===6?"sun":""}">${d}</div>`).join("");
+  for(let i=0;i<off;i++)h+=`<div class="blank"></div>`;
+  for(let d=1;d<=days;d++){
+    const k=dkey(y,m,d),r=resolveDate(k),wd=weekdayKey(k);
+    const cls=["cell",wd==="sat"?"sat":"",wd==="sun"?"sun":"",r.hname?"hol":"",k===todayKey?"today":"",k===ui.date?"sel":""].join(" ");
+    const chip=(r.src==="preset"||r.src==="custom")?`<span class="chip">${esc(r.label)}</span>`:`<span class="chip none"></span>`;
+    h+=`<button class="${cls}" data-k="${k}" aria-label="${m}月${d}日 ${esc(r.hname||"")} ${esc(r.label)}の予定"><span class="cn">${d}</span><span class="ch">${esc(r.hname)}</span>${ring(r.items)}${chip}</button>`;
+  }
+  $("calGrid").innerHTML=h;
+  $("calGrid").querySelectorAll(".cell").forEach(c=>c.addEventListener("click",()=>{ui.date=c.dataset.k;resetForm();render()}));
+  $("useHol").checked=state.useHoliday;
+}
+function sourceOptions(includeEmpty){
+  let o=includeEmpty?`<option value="empty">空っぽ</option>`:"";
+  o+=WK.map(([k])=>`<option value="w:${k}">${WKNAME[k]}の基本</option>`).join("");
+  return o;
+}
+function drawPresetBar(){
+  $("presetChips").innerHTML=state.presets.length?state.presets.map(p=>`<button class="pchip" role="tab" aria-selected="${p.id===ui.preset}" data-id="${p.id}">${ring(p.items)}${esc(p.name)}</button>`).join(""):`<p class="note">プリセットはまだありません。下で名前を入れて作成してください。いつもと違う日の予定（在宅勤務、テスト期間、旅行など）を登録しておくと、カレンダーの好きな日に当てはめられます。</p>`;
+  $("presetChips").querySelectorAll(".pchip").forEach(c=>c.addEventListener("click",()=>{ui.preset=c.dataset.id;resetForm();render()}));
+  const sel=$("npFrom"),v=sel.value;sel.innerHTML=sourceOptions(true);if(v)sel.value=v;
+}
+
+/* ---------- 編集パネル ---------- */
+function armed(btn,label,fn){
+  if(btn.dataset.armed){delete btn.dataset.armed;btn.classList.remove("armed");btn.textContent=btn.dataset.orig;fn();return}
+  btn.dataset.orig=btn.textContent;btn.dataset.armed="1";btn.classList.add("armed");btn.textContent=label;
+  setTimeout(()=>{if(btn.dataset.armed){delete btn.dataset.armed;btn.classList.remove("armed");btn.textContent=btn.dataset.orig}},4000);
+}
+function presetSelect(id){return `<select id="${id}">${state.presets.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>`}
+function drawCtx(){
+  const ctx=$("ctx");let h="";
+  if(ui.mode==="week"){
+    $("edTitle").textContent=ui.wk==="holiday"?"祝日の基本の予定":`${WKNAME[ui.wk]}日の基本の予定`;
+    if(ui.wk==="holiday")h+=`<p><span class="badge hol">祝日</span>祝日・振替休日・国民の休日に使われる予定です。カレンダーの「祝日には『祝日』の予定を使う」をオフにすると、祝日も曜日の予定になります。</p>`;
+    if(state.presets.length)h+=`<div class="row"><label for="ldPreset">プリセットから読み込む（上書き）${presetSelect("ldPreset")}</label><button class="btn" type="button" id="ldBtn">読み込む</button></div>`;
+  }else if(ui.mode==="date"){
+    const dt=parseKey(ui.date),r=resolveDate(ui.date);
+    $("edTitle").textContent=`${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日（${WKNAME[weekdayKey(ui.date)].slice(0,1)}）の予定`;
+    const hb=r.hname?`<span class="badge hol">${esc(r.hname)}</span>`:"";
+    const msg={week:`<span class="badge">基本</span>${hb}${WKNAME[weekdayKey(ui.date)]}日の基本の予定を表示しています。`,
+      holiday:`${hb}祝日なので「祝日」の基本の予定を表示しています。`,
+      preset:`<span class="badge">プリセット</span>${hb}「${esc(r.label)}」を使っています。プリセットを直すと、この日にも反映されます。`,
+      custom:`<span class="badge">この日だけ</span>${hb}この日専用の予定です。基本の予定やほかの日には影響しません。`}[r.src];
+    h+=`<p>${msg}</p>`;
+    if(r.src!=="custom")h+=`<p class="note">ここで予定を追加・編集すると、この日だけの予定として保存されます。基本の予定は変わりません。</p>`;
+    h+=`<div class="row"><label for="apSrc">この日に当てはめる<select id="apSrc">${state.presets.map(p=>`<option value="p:${p.id}">プリセット：${esc(p.name)}</option>`).join("")}${sourceOptions(false)}<option value="empty">空っぽ（一から作る）</option></select></label><button class="btn" type="button" id="apBtn">当てはめる</button></div>`;
+    const b=[];
+    if(state.dates[ui.date])b.push(`<button class="btn" type="button" id="resetDate">この日の設定をやめて基本に戻す</button>`);
+    if(r.src==="preset")b.push(`<button class="btn" type="button" id="goPreset">プリセット「${esc(r.label)}」を編集</button>`);
+    if(b.length)h+=`<div class="btns">${b.join("")}</div>`;
+  }else{
+    const p=findPreset(ui.preset);if(!p){ctx.hidden=true;return}
+    $("edTitle").textContent=`プリセット「${p.name}」`;
+    const used=Object.values(state.dates).filter(v=>v.preset===p.id).length;
+    h+=`<p><span class="badge">プリセット</span>${used?`カレンダーの ${used} 日でこのプリセットを使っています。ここでの変更はその日にも反映されます。`:"カレンダーで日を選んで「当てはめる」と、その日にこの予定が使われます。"}</p>`;
+    h+=`<div class="row"><label for="rnName">名前<input type="text" id="rnName" maxlength="20" value="${esc(p.name)}"></label><button class="btn" type="button" id="rnBtn">名前を変更</button></div>`;
+    h+=`<div class="btns"><button class="btn" type="button" id="dupBtn">複製</button><button class="btn danger" type="button" id="delPreset">プリセットを削除</button></div>`;
+  }
+  ctx.innerHTML=h;ctx.hidden=!h;bindCtx();
+}
+function bindCtx(){
+  const on=(id,f)=>{const e=$(id);if(e)e.addEventListener("click",f)};
+  on("ldBtn",e=>{const p=findPreset($("ldPreset").value);if(!p)return;armed(e.target,"もう一度押すと上書き",()=>{mutate(a=>a.splice(0,a.length,...clone(p.items)));resetForm();render();toast("toast",`「${p.name}」を読み込みました`)})});
+  on("apBtn",()=>{
+    const v=$("apSrc").value;
+    if(v.startsWith("p:"))state.dates[ui.date]={preset:v.slice(2)};
+    else if(v.startsWith("w:"))state.dates[ui.date]={items:clone(state.week[v.slice(2)])};
+    else state.dates[ui.date]={items:[]};
+    save();resetForm();render();toast("toast","この日に当てはめました");
+  });
+  on("resetDate",()=>{delete state.dates[ui.date];save();resetForm();render();toast("toast","基本の予定に戻しました")});
+  on("goPreset",()=>{ui.preset=state.dates[ui.date].preset;ui.mode="preset";resetForm();render()});
+  on("rnBtn",()=>{const p=findPreset(ui.preset),n=$("rnName").value.trim();if(!p||!n)return;p.name=n.slice(0,20);save();render();toast("toast","名前を変更しました")});
+  on("dupBtn",()=>{const p=findPreset(ui.preset);if(!p)return;const np={id:newPid(),name:(p.name+"のコピー").slice(0,20),items:clone(p.items)};state.presets.push(np);ui.preset=np.id;save();resetForm();render();toast("toast","複製しました")});
+  on("delPreset",e=>armed(e.target,"もう一度押すと削除",()=>{
+    const p=findPreset(ui.preset);if(!p)return;
+    Object.entries(state.dates).forEach(([k,v])=>{if(v.preset===p.id)state.dates[k]={items:clone(p.items)}});
+    state.presets=state.presets.filter(x=>x.id!==p.id);ui.preset=state.presets[0]?.id||null;
+    save();resetForm();render();toast("toast",`「${p.name}」を削除しました。使っていた日は、この日だけの予定として残しています`);
+  }));
+}
+function drawList(){
+  const items=sortItems(getItems());
+  $("list").innerHTML=items.length?items.map(x=>`<li class="item${ui.editing===x.id?" sel":""}" data-id="${x.id}" tabindex="0"><span class="dot" style="background:${x.color}"></span><span class="time">${x.start}–${x.end}</span><span>${esc(x.title)}</span></li>`).join(""):`<li class="empty">まだ予定がありません。下のフォームから追加してください。</li>`;
+  $("list").querySelectorAll(".item").forEach(li=>{li.addEventListener("click",()=>startEdit(+li.dataset.id));li.addEventListener("keydown",e=>{if(e.key==="Enter")startEdit(+li.dataset.id)})});
+  $("copyBox").hidden=ui.mode!=="week";
+  if(ui.mode==="week")$("copyDays").innerHTML=WK.filter(([k])=>k!==ui.wk).map(([k,l])=>`<label for="cp-${k}"><input type="checkbox" id="cp-${k}" value="${k}">${l}</label>`).join("");
+  $("asPreset").hidden=ui.mode==="preset";
+}
+function drawSwatches(){
+  $("swatches").innerHTML=COLORS.map(c=>`<button type="button" class="sw" style="background:${c}" aria-pressed="${c===ui.color}" data-c="${c}" aria-label="色 ${c}"></button>`).join("");
+  $("swatches").querySelectorAll(".sw").forEach(s=>s.addEventListener("click",()=>{ui.color=s.dataset.c;drawSwatches()}));
+}
+
+/* ---------- 下段 ---------- */
+function drawBottom(){
+  const b=$("bottom");
+  if(ui.mode==="week"){
+    b.hidden=false;
+    b.innerHTML=`<h2>一週間と祝日</h2><div class="week">${WK.map(([k,l])=>`<button class="mini ${k}${k===ui.wk?" cur":""}" data-k="${k}" aria-label="${WKNAME[k]}を表示">${ring(state.week[k])}<span>${l}</span></button>`).join("")}</div>`;
+    b.querySelectorAll(".mini").forEach(m=>m.addEventListener("click",()=>{ui.wk=m.dataset.k;resetForm();render();window.scrollTo({top:0,behavior:"smooth"})}));
+    const ms=WK.filter(([k])=>state.memos[k]),box=document.createElement("div");box.className="mlist";
+    box.innerHTML=`<h3>曜日ごとのメモ</h3>`+(ms.length?ms.map(([k,l])=>`<button class="mrow ${k}" data-k="${k}"><span class="mday">${l}</span><span class="mtext">${esc(state.memos[k])}</span></button>`).join(""):`<p class="note">曜日を選んで「メモ」欄にやることを書くと、ここに一覧で表示されます。</p>`);
+    b.appendChild(box);
+    box.querySelectorAll(".mrow").forEach(m=>m.addEventListener("click",()=>{ui.wk=m.dataset.k;resetForm();render();window.scrollTo({top:0,behavior:"smooth"});$("memo").focus({preventScroll:true})}));
+  }else if(ui.mode==="date"){
+    b.hidden=false;
+    const keys=Object.keys(state.dates).sort();
+    b.innerHTML=`<h2>個別に設定した日</h2>`+(keys.length?`<ul class="olist">${keys.map(k=>{const dt=parseKey(k),r=resolveDate(k);return `<li><button class="orow${k<todayKey?" past":""}" data-k="${k}"><span class="time">${dt.getFullYear()}/${pad(dt.getMonth()+1)}/${pad(dt.getDate())}（${WKNAME[weekdayKey(k)].slice(0,1)}）</span><span>${r.src==="preset"?"プリセット："+esc(r.label):"この日だけの予定"}${r.hname?`　<span class="note">${esc(r.hname)}</span>`:""}</span><span class="note">${r.items.length}件</span></button></li>`}).join("")}</ul>`:`<p class="note" style="margin-top:8px">まだありません。カレンダーで日を選び、予定を編集するかプリセットを当てはめると、ここに並びます。</p>`);
+    b.querySelectorAll(".orow").forEach(r=>r.addEventListener("click",()=>{const dt=parseKey(r.dataset.k);ui.date=r.dataset.k;ui.calY=dt.getFullYear();ui.calM=dt.getMonth()+1;resetForm();render();window.scrollTo({top:0,behavior:"smooth"})}));
+  }else b.hidden=true;
+}
+
+/* ---------- メモ ---------- */
+let memoTimer;
+function memoKeyFor(k){return (holidayName(k)&&state.useHoliday)?"holiday":weekdayKey(k)}
+function drawMemo(){
+  const box=$("memoBox"),ta=$("memo"),view=$("memoView");
+  if(ui.mode==="preset"){box.hidden=true;return}
+  box.hidden=false;
+  if(ui.mode==="week"){
+    $("memoEdit").hidden=false;view.hidden=true;
+    $("memoLabel").textContent=ui.wk==="holiday"?"祝日のメモ（やること・持ち物など）":`${WKNAME[ui.wk]}日のメモ（やること・持ち物など）`;
+    if(document.activeElement!==ta){ta.value=state.memos[ui.wk]||"";$("memoSaved").textContent=""}
+  }else{
+    const k=memoKeyFor(ui.date),t=state.memos[k];
+    $("memoEdit").hidden=true;view.hidden=false;
+    view.innerHTML=`<div class="memohead"><h3>${k==="holiday"?"祝日":WKNAME[k]+"日"}のメモ</h3><button class="btn" type="button" id="memoGo">メモを編集</button></div><p class="memotext${t?"":" note"}">${t?esc(t):"メモはまだありません。"}</p>`;
+    $("memoGo").addEventListener("click",()=>{ui.mode="week";ui.wk=k;resetForm();render();$("memo").focus()});
+  }
+}
+$("memo").addEventListener("input",e=>{
+  const v=e.target.value.slice(0,2000);if(v)state.memos[ui.wk]=v;else delete state.memos[ui.wk];
+  $("memoSaved").textContent="";clearTimeout(memoTimer);
+  memoTimer=setTimeout(()=>{save();drawBottom();$("memoSaved").textContent="保存しました"},500);
+});
+
+function render(){drawModes();drawWeekTabs();drawCalendar();drawPresetBar();drawCtx();drawMemo();drawClock();drawList();drawSwatches();drawBottom()}
+
+/* ---------- フォーム ---------- */
+const fTitle=$("fTitle"),fStart=$("fStart"),fEnd=$("fEnd"),saveBtn=$("saveBtn"),newBtn=$("newBtn"),delBtn=$("delBtn");
+function startEdit(id){
+  const x=getItems().find(i=>i.id===id);if(!x)return;
+  ui.editing=id;ui.color=x.color;fTitle.value=x.title;fStart.value=x.start;fEnd.value=x.end;
+  saveBtn.textContent="変更を保存";newBtn.hidden=false;delBtn.hidden=false;
+  render();fTitle.focus();
+}
+function resetForm(){
+  ui.editing=null;fTitle.value="";
+  const items=sortItems(getItems());
+  if(items.length){const last=items[items.length-1];if(toMin(last.end)>toMin(last.start)){fStart.value=last.end;const e=Math.min(toMin(last.end)+60,1439);fEnd.value=`${pad(Math.floor(e/60))}:${pad(e%60)}`}}
+  saveBtn.textContent="追加";newBtn.hidden=true;delBtn.hidden=true;
+}
+function toast(id,msg){const t=$(id);t.textContent=msg;clearTimeout(t._t);t._t=setTimeout(()=>t.textContent="",3500)}
+
+$("form").addEventListener("submit",e=>{
+  e.preventDefault();
+  const title=fTitle.value.trim(),s=fStart.value,en=fEnd.value;
+  if(!title||!s||!en)return;
+  if(s===en){toast("toast","開始と終了が同じ時刻です。終日の予定なら 0:00〜23:59 で入力してください。");return}
+  const wasEditing=ui.editing;
+  mutate(a=>{if(wasEditing){const x=a.find(i=>i.id===wasEditing);if(x)Object.assign(x,{title,start:s,end:en,color:ui.color})}else a.push({id:uid++,title,start:s,end:en,color:ui.color})});
+  toast("toast",wasEditing?"変更を保存しました":`「${title}」を追加しました`);
+  resetForm();render();
+});
+newBtn.addEventListener("click",()=>{resetForm();render()});
+delBtn.addEventListener("click",()=>{const id=ui.editing;mutate(a=>{const i=a.findIndex(x=>x.id===id);if(i>=0)a.splice(i,1)});toast("toast","削除しました");resetForm();render()});
+$("clearBtn").addEventListener("click",e=>armed(e.target,"もう一度押すと消します",()=>{mutate(a=>a.splice(0,a.length));resetForm();render();toast("toast","予定をすべて消しました")}));
+$("copyBtn").addEventListener("click",()=>{
+  const t=[...document.querySelectorAll("#copyDays input:checked")].map(i=>i.value);
+  if(!t.length){toast("toast","コピー先の曜日を選んでください");return}
+  t.forEach(k=>state.week[k]=clone(state.week[ui.wk]));save();render();
+  toast("toast",`${t.map(k=>WK.find(w=>w[0]===k)[1]).join("・")}にコピーしました`);
+});
+$("asPreset").addEventListener("submit",e=>{
+  e.preventDefault();const n=$("apName").value.trim();if(!n)return;
+  state.presets.push({id:newPid(),name:n.slice(0,20),items:clone(getItems())});$("apName").value="";save();render();
+  toast("toast",`プリセット「${n}」を作りました。「プリセット」画面で確認できます`);
+});
+$("newPreset").addEventListener("submit",e=>{
+  e.preventDefault();const n=$("npName").value.trim();if(!n)return;const f=$("npFrom").value;
+  const p={id:newPid(),name:n.slice(0,20),items:f&&f.startsWith("w:")?clone(state.week[f.slice(2)]):[]};
+  state.presets.push(p);ui.preset=p.id;$("npName").value="";save();resetForm();render();toast("toast",`プリセット「${p.name}」を作りました`);
+});
+
+/* ---------- 切替・カレンダー操作 ---------- */
+document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{ui.mode=b.dataset.m;if(ui.mode==="preset"&&!findPreset(ui.preset))ui.preset=state.presets[0]?.id||null;resetForm();render()}));
+$("prevM").addEventListener("click",()=>{ui.calM--;if(ui.calM<1){ui.calM=12;ui.calY--}drawCalendar()});
+$("nextM").addEventListener("click",()=>{ui.calM++;if(ui.calM>12){ui.calM=1;ui.calY++}drawCalendar()});
+$("todayBtn").addEventListener("click",()=>{ui.calY=now.getFullYear();ui.calM=now.getMonth()+1;ui.date=todayKey;resetForm();render()});
+$("useHol").addEventListener("change",e=>{state.useHoliday=e.target.checked;save();resetForm();render()});
+
+/* ---------- バックアップ ---------- */
+const io=$("io");
+$("copyJson").addEventListener("click",()=>{
+  navigator.clipboard.writeText(io.value).then(()=>toast("ioToast","コピーしました")).catch(()=>{io.select();toast("ioToast","選択しました。Ctrl+C（⌘+C）でコピーしてください")});
+});
+$("loadJson").addEventListener("click",()=>{
+  try{const d=JSON.parse(io.value);if(!d||typeof d!=="object")throw 0;
+    if(d.week)state=normalize(d);
+    else if(d.mon){const s={week:{},presets:state.presets,dates:{},useHoliday:true};WK.forEach(([k])=>s.week[k]=d[k]||d.sun||[]);state=normalize(exportFrom(s))}
+    else throw 0;
+    ui.preset=state.presets[0]?.id||null;save();resetForm();render();toast("ioToast","読み込みました");
+  }catch(e){toast("ioToast","読み込めませんでした。コピーしたテキストをそのまま貼り付けてください")}
+});
+function exportFrom(s){return JSON.parse(JSON.stringify(s))}
+
+save();resetForm();render();
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
+</script>
+
+</body>
+</html>
